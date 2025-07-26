@@ -1,3 +1,30 @@
+# 比起原UP的差异
+ - 增加了思维链的输出
+  if (req.thinking) {
+    if (req.thinking.type === "enabled" && req.thinking.budget_tokens) {
+      cfg.thinkingConfig = {
+        thinkingBudget: req.thinking.budget_tokens,
+        includeThoughts: true,
+      };
+    } else if (
+      typeof req.thinking === "object" &&
+      req.thinking.thinkingBudget !== undefined
+    ) {
+      cfg.thinkingConfig = {
+        thinkingBudget: req.thinking.thinkingBudget,
+        includeThoughts: true,
+      };
+    }
+  } else {
+    // Set default thinking configuration if not specified
+    cfg.thinkingConfig = {
+      thinkingBudget: 2048,
+      includeThoughts: true,
+    };
+  }
+ 默认是思维链接thinkingBudget=2048，这个参数设成0则不进行思维链。
+
+
 # Gemini 2.0 代理
 
 使用 Deno 免费代理 Google Gemini，国内直连，不限地区/网络环境，打开即用。

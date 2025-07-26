@@ -1,5 +1,6 @@
 # 比起原UP的差异
- - 增加了思维链的输出
+ - 增加了思维链的输出，默认是思维链接thinkingBudget=2048，这个参数设成0则不进行思维链。
+```
   if (req.thinking) {
     if (req.thinking.type === "enabled" && req.thinking.budget_tokens) {
       cfg.thinkingConfig = {
@@ -22,7 +23,8 @@
       includeThoughts: true,
     };
   }
- 默认是思维链接thinkingBudget=2048，这个参数设成0则不进行思维链。
+```
+ - 我用起来没bug，有什么问题尽量自己处理。代码不复杂，搞不定找AI
 
 
 # Gemini 2.0 代理

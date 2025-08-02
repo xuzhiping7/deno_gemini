@@ -390,10 +390,42 @@ const transformMessages = async (messages) => {
   return { system_instruction, contents };
 };
 
+const transformTools = (tools) => {
+  if (!tools || !Array.isArray(tools)) {
+    return undefined;
+  }
+
+  const function_declarations = tools
+    .filter((tool) => tool.type === "function" && tool.function)
+    .map((tool) => {
+      const func = tool.function;
+      const declaration = {
+        name: func.name,
+        description: func.description || "",
+      };
+
+      // 只有当函数有参数时才添加parameters字段
+      if (
+        func.parameters &&
+        func.parameters.properties &&
+        Object.keys(func.parameters.properties).length > 0
+      ) {
+        declaration.parameters = func.parameters;
+      }
+
+      return declaration;
+    });
+
+  return function_declarations.length > 0
+    ? { function_declarations }
+    : undefined;
+};
+
 const transformRequest = async (req) => ({
   ...(await transformMessages(req.messages)),
   safetySettings,
   generationConfig: transformConfig(req),
+  ...(req.tools && { tools: transformTools(req.tools) }),
 });
 
 const generateChatcmplId = () => {
@@ -418,15 +450,16 @@ const SEP = "\n\n|>";
 const transformCandidates = (key, cand) => {
   const parts = cand.content?.parts || [];
 
-  // Separate thinking content from regular content
+  // Separate different types of content
   const textParts = parts.filter((p) => p.text && !p.thought);
   const thinkingParts = parts.filter((p) => p.text && p.thought);
+  const functionCallParts = parts.filter((p) => p.functionCall);
 
   const result = {
     index: cand.index || 0, // 0-index is absent in new -002 models response
     [key]: {
       role: "assistant",
-      content: textParts.map((p) => p.text).join(SEP) || "",
+      content: textParts.map((p) => p.text).join(SEP) || null,
     },
     logprobs: null,
     finish_reason: reasonsMap[cand.finishReason] || cand.finishReason,
@@ -437,7 +470,32 @@ const transformCandidates = (key, cand) => {
     result[key].reasoning = thinkingParts.map((p) => p.text).join(SEP);
   }
 
+  // Handle function calls (convert from Google format to OpenAI format)
+  if (functionCallParts.length > 0) {
+    result[key].tool_calls = functionCallParts.map((part, index) => ({
+      id: `call_${generateToolCallId()}`,
+      type: "function",
+      function: {
+        name: part.functionCall.name,
+        arguments: JSON.stringify(part.functionCall.args || {}),
+      },
+    }));
+
+    // If there are tool calls, content should be null in OpenAI format
+    if (result[key].tool_calls.length > 0 && !result[key].content) {
+      result[key].content = null;
+    }
+  }
+
   return result;
+};
+
+const generateToolCallId = () => {
+  const characters =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const randomChar = () =>
+    characters[Math.floor(Math.random() * characters.length)];
+  return Array.from({ length: 24 }, randomChar).join("");
 };
 const transformCandidatesMessage = transformCandidates.bind(null, "message");
 const transformCandidatesDelta = transformCandidates.bind(null, "delta");
@@ -493,8 +551,12 @@ function transformResponseStream(data, stop, first) {
   if (first) {
     item.delta.content = "";
     // Initialize reasoning field if thinking is present
-    if (data.candidates[0].thinking) {
+    if (data.candidates[0].content?.parts?.some((p) => p.thought)) {
       item.delta.reasoning = "";
+    }
+    // Initialize tool_calls field if function calls are present
+    if (data.candidates[0].content?.parts?.some((p) => p.functionCall)) {
+      item.delta.tool_calls = [];
     }
   } else {
     delete item.delta.role;

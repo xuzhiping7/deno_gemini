@@ -424,6 +424,53 @@ const transformToolResponseMsg = async (toolMsg) => {
   };
 };
 
+const transformAssistantMsg = async (assistantMsg) => {
+  // Handle assistant messages with tool_calls
+  const parts = [];
+
+  // Add text content if present
+  if (assistantMsg.content && assistantMsg.content.trim()) {
+    parts.push({ text: assistantMsg.content });
+  }
+
+  // Convert tool_calls to Gemini format
+  if (assistantMsg.tool_calls && assistantMsg.tool_calls.length > 0) {
+    for (const toolCall of assistantMsg.tool_calls) {
+      if (toolCall.type === "function") {
+        const functionCall = {
+          functionCall: {
+            name: toolCall.function.name,
+            args: {},
+          },
+        };
+
+        // Parse arguments
+        try {
+          if (toolCall.function.arguments) {
+            const args =
+              typeof toolCall.function.arguments === "string"
+                ? JSON.parse(toolCall.function.arguments)
+                : toolCall.function.arguments;
+            functionCall.functionCall.args = args;
+          }
+        } catch (e) {
+          console.error("Error parsing tool call arguments:", e);
+          // Use empty args if parsing fails
+        }
+
+        parts.push(functionCall);
+      }
+    }
+  }
+
+  // If no content and no tool calls, add empty text to avoid errors
+  if (parts.length === 0) {
+    parts.push({ text: "" });
+  }
+
+  return { role: "model", parts };
+};
+
 const transformMessages = async (messages) => {
   if (!messages) {
     return;
@@ -437,8 +484,12 @@ const transformMessages = async (messages) => {
     } else if (item.role === "tool") {
       // Handle tool response messages in Gemini native format
       contents.push(await transformToolResponseMsg(item));
+    } else if (item.role === "assistant") {
+      // Handle assistant messages with potential tool_calls
+      contents.push(await transformAssistantMsg(item));
     } else {
-      item.role = item.role === "assistant" ? "model" : "user";
+      // Handle user messages
+      item.role = "user";
       contents.push(await transformMsg(item));
     }
   }

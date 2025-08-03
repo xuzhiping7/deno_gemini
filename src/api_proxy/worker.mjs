@@ -368,6 +368,62 @@ const transformMsg = async ({ role, content }) => {
   return { role, parts };
 };
 
+const transformToolResponseMsg = async (toolMsg) => {
+  // Transform OpenAI tool response format to Gemini native format
+  // OpenAI format: { role: "tool", tool_call_id: "call_xxx", content: "response" }
+  // Gemini format: { role: "user", parts: [{ functionResponse: { name: "function_name", response: {...} } }] }
+
+  const toolCallId = toolMsg.tool_call_id || "unknown_call";
+  const content = toolMsg.content;
+
+  // Use the function name provided by the backend, or fall back to extracting from call ID
+  let functionName = toolMsg.name || "tool_response";
+  if (!toolMsg.name && toolCallId && typeof toolCallId === "string") {
+    // Try to extract meaningful name from call ID if possible
+    const parts = toolCallId.split("_");
+    if (parts.length > 1) {
+      functionName = parts.slice(1).join("_") || "tool_response";
+    }
+  }
+
+  // Parse the content to get the actual tool response
+  let response = {};
+  try {
+    if (typeof content === "string") {
+      // Try to parse as JSON first
+      try {
+        response = JSON.parse(content);
+        // If it's a string that was JSON parsed, wrap it properly
+        if (typeof response === "string") {
+          response = { result: response };
+        }
+      } catch {
+        // If not JSON, wrap the string content
+        response = { result: content };
+      }
+    } else if (content && typeof content === "object") {
+      response = content;
+    } else {
+      response = { result: String(content || "") };
+    }
+  } catch (e) {
+    console.error("Error parsing tool response content:", e);
+    response = { result: String(content || "") };
+  }
+
+  return {
+    role: "user",
+    parts: [
+      {
+        functionResponse: {
+          name: functionName,
+          response: response,
+        },
+      },
+    ],
+  };
+};
+
 const transformMessages = async (messages) => {
   if (!messages) {
     return;
@@ -378,6 +434,9 @@ const transformMessages = async (messages) => {
     if (item.role === "system") {
       delete item.role;
       system_instruction = await transformMsg(item);
+    } else if (item.role === "tool") {
+      // Handle tool response messages in Gemini native format
+      contents.push(await transformToolResponseMsg(item));
     } else {
       item.role = item.role === "assistant" ? "model" : "user";
       contents.push(await transformMsg(item));

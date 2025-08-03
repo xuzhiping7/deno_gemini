@@ -1,5 +1,7 @@
 # 比起原UP的差异
  - 增加了思维链的输出，默认是思维链接thinkingBudget=2048，这个参数设成0则不进行思维链。
+ - 增加了Function Call处理，传入和回调答案
+   
 ```
   if (req.thinking) {
     if (req.thinking.type === "enabled" && req.thinking.budget_tokens) {

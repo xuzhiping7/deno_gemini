@@ -273,9 +273,9 @@ const transformConfig = (req) => {
       };
     }
   } else {
-    // Set default thinking configuration if not specified
+    // Set default thinking configuration if not specified，set max as default
     cfg.thinkingConfig = {
-      thinkingBudget: 50000,
+      thinkingBudget: 32768,
       includeThoughts: true,
     };
   }
